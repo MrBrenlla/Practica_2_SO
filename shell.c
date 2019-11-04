@@ -20,9 +20,9 @@
 #include <dirent.h>
 #include <pwd.h>
 #include <grp.h>
+#include "list.h"
 
-//Defínese a constante MAX, que será o tamaño máximo das cadeas
-#define MAX  300
+
 
 typedef  struct nodo {
  	char dato[MAX];
@@ -59,6 +59,7 @@ void mostrar(int l,int v,struct dirent * sig, char dir[]);
 void auxListar(char actualdir[], char aux1[], int rec, int l, int r, int v);
 void listar(char arg[]);
 void borrar (char arg[], int palabras);
+void asignar (char arg[], int palabras);
 void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h);
 
 /*
@@ -340,7 +341,7 @@ void crear(char arg[], int palabras){
 
   }
   if (palabras == 3){
-    //Se hai tres argumentos e o primeiro é -d intentase crear o directorio
+    //Se hai dous argumentos e o primeiro é -d intentase crear o directorio
     if (strncmp(arg,"-d ",3)==0){
       char aux1[MAX], aux2[MAX],aux3[MAX];
       limpiarBuffer(aux3);
@@ -634,14 +635,62 @@ void borrar (char arg[], int palabras){
 --------------------------------------------------------------------------------
 */
 void asignar (char arg[], int palabras){
+  //Se non hai argumentos mostrar a lista completa
   if (palabras == 1){
-    //Se so se introduce 1 palabra imprímese a lista
+
   }
+
+  //Se só se introduce 1 argumento lístase en funcion da palabra introducida
   if (palabras == 2){
-    //Se se introducen 2 palabras 
+      //Se só se introduce 1 argumento lístase en funcion da palabra introducida
+      if (strncmp(arg,"-malloc",7)==0) {
+        //devolver a lista de direccións asignadas con -malloc
+      }
+      if (strncmp(arg,"-mmap",5)==0) {
+        //devolver a lista de direccións asignadas con -mmap
+      }
+      if (strncmp(arg,"-crearshared",12)==0) {
+        //devolver a lista de direccións asignadas con -crearshared
+      }
+      if (strncmp(arg,"-shared",7)==0) {
+        //devolver a lista de direccións asignadas con -shared
+      }
+      else{
+        printf("uso: allocate [-malloc|-shared|-createshared|-mmap]");
+      }
   }
+  //Se se introducen 2 argumentos
   if (palabras == 3){
-    //Se se introducen 3 palabras
+      if (strncmp(arg,"-malloc",7)==0) {
+        //Se se introduciu asignar -malloc _tam_
+          char aux1[], aux2[];
+          TrocearCadena(arg, aux1, aux2); //Gardamos en aux1 o argumento _tam_
+          aux2 = malloc(aux1);
+          //Comprobamos se a memoria se reservou correctamente
+          if (NULL <> aux2){
+            //reservouse correctamente
+            printf("allocated %d at %c\n",aux1, aux2)
+          }
+          else {
+            //non se reservou correctamente
+            printf("Erro ao reservar memoria\n");
+          }
+
+
+      }
+      if (strncmp(arg,"-shared",7)==0) {
+        //facer o que lle corresponde a asignar -shared _cl_
+      }
+  }
+
+  //Se se introducen 3 argumentos
+  if (palabras == 4){
+    if (strncmp(arg,"-mmap",5)==0) {
+      //facer o que lle corresponde a asignar -mmap fich _perm_
+    }
+    if (strncmp(arg,"-crearshared",12)==0) {
+      //facer o que lle corresponde a asignar -crearshared _cl_ _tam_
+    }
   }
 }
 /*
