@@ -773,7 +773,7 @@ void volcar(char arg[], int palabras){
   if(palabras==1) printf("Falta addr\n");
   if(palabras==2){
     for(int i =0 ; i<25 ; i++){
-      printf("%p ", *(arg + 4));
+      printf("%d ", *(arg + 4));
     }
   }
 
