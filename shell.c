@@ -20,6 +20,9 @@
 #include <dirent.h>
 #include <pwd.h>
 #include <grp.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+#include <errno.h>
 #include "list.h"
 
 
@@ -59,8 +62,12 @@ void mostrar(int l,int v,struct dirent * sig, char dir[]);
 void auxListar(char actualdir[], char aux1[], int rec, int l, int r, int v);
 void listar(char arg[]);
 void borrar (char arg[], int palabras);
-void asignar (char arg[], int palabras);
-void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h);
+void * MmapFichero (char * fichero, int protection);
+void Cmd_AsignarMmap (char *arg[]);
+ssize_t LeerFichero (char *fich, void *p, ssize_t n);
+void TrocearCadenaEnArray(char arg[],char *out[], int numPalabras);
+void asignar (char arg[], int palabras,tListM * m);
+void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,tListM * m);
 
 /*
 --------------------------------------------------------------------------------
@@ -634,50 +641,110 @@ void borrar (char arg[], int palabras){
 /*
 --------------------------------------------------------------------------------
 */
-void asignar (char arg[], int palabras){
-  //Se non hai argumentos mostrar a lista completa
-  if (palabras == 1){
+void * MmapFichero (char * fichero, int protection){
+    int df, map=MAP_PRIVATE,modo=O_RDONLY;
 
+    struct stat s;
+    void *p;
+    if (protection&PROT_WRITE)
+        modo=O_RDWR;
+    if (stat(fichero,&s)==-1 || (df=open(fichero, modo))==-1)
+        return NULL;
+    if ((p=mmap (NULL,s.st_size, protection,map,df,0))==MAP_FAILED)
+        return NULL;
+    /*Guardar Direccion de Mmap (p, s.st_size,fichero,df......);*/
+    return p;
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void Cmd_AsignarMmap (char *arg[]){
+    char *perm;
+    void *p;
+    int protection=0;
+    if ((perm=arg[1])!=NULL && strlen(perm)<4) {
+        if (strchr(perm,'r')!=NULL) protection|=PROT_READ;
+        if (strchr(perm,'w')!=NULL) protection|=PROT_WRITE;
+        if (strchr(perm,'x')!=NULL) protection|=PROT_EXEC;
+    }
+    if ((p=MmapFichero(arg[0],protection))==NULL)
+        perror ("Imposible mapear fichero");
+    else
+      printf ("fichero %s mapeado en %p\n", arg[0], p);
+    }
+    #define LEERCOMPLETO ((ssize_t)-1)
+    ssize_t LeerFichero (char *fich, void *p, ssize_t n)
+    {
+    ssize_t nleidos,tam=n;
+    int df, aux;
+    struct stat s;
+    /*n=-1 indica que se lea tod*/
+    if (stat (fich,&s)==-1 || (df=open(fich,O_RDONLY))==-1)
+    return ((ssize_t)-1);
+    if (n==LEERCOMPLETO)
+    tam=(ssize_t) s.st_size;
+    if ((nleidos=read(df,p, tam))==-1){
+    aux=errno;
+    close(df);
+    errno=aux;
+    return ((ssize_t)-1);
+    }
+    close (df);
+    return (nleidos);
+}
+
+/*
+--------------------------------------------------------------------------------
+*/
+//out é o array no que se van a gardar os argumentos, e inicializase na función
+// na que se realiza a chamada
+void TrocearCadenaEnArray(char arg[],char *out[], int numPalabras){
+  char aux1[MAX], aux2[MAX], aux3[MAX];
+  int i=0;
+  strcpy(aux3,arg);
+  while(numPalabras>0){
+    numPalabras=TrocearCadena(aux3, aux1 , aux2);
+    strcpy(out[i],aux1);
+    i++;
+    strcpy(aux3,aux2);
   }
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void asignar (char arg[], int palabras, tListM * m){
 
+  if (palabras == 1){
+    verListaM(*m,"all");
+  }
   //Se só se introduce 1 argumento lístase en funcion da palabra introducida
   if (palabras == 2){
       //Se só se introduce 1 argumento lístase en funcion da palabra introducida
-      if (strncmp(arg,"-malloc",7)==0) {
-        //devolver a lista de direccións asignadas con -malloc
-      }
-      if (strncmp(arg,"-mmap",5)==0) {
-        //devolver a lista de direccións asignadas con -mmap
-      }
-      if (strncmp(arg,"-crearshared",12)==0) {
-        //devolver a lista de direccións asignadas con -crearshared
-      }
-      if (strncmp(arg,"-shared",7)==0) {
-        //devolver a lista de direccións asignadas con -shared
-      }
-      else{
-        printf("uso: allocate [-malloc|-shared|-createshared|-mmap]");
-      }
+      if (strncmp(arg,"-malloc",7)==0) verListaM(*m,"malloc");
+      if (strncmp(arg,"-mmap",5)==0) verListaM(*m,"mmap");
+      if (strncmp(arg,"-crearshared",12)==0) verListaM(*m,"shared");
+      if (strncmp(arg,"-shared",7)==0) verListaM(*m,"shared");
+      else printf("uso: allocate [-malloc|-shared|-createshared|-mmap]");
   }
   //Se se introducen 2 argumentos
   if (palabras == 3){
       if (strncmp(arg,"-malloc",7)==0) {
         //Se se introduciu asignar -malloc _tam_
-          char aux1[], aux2[];
-          TrocearCadena(arg, aux1, aux2); //Gardamos en aux1 o argumento _tam_
-          aux2 = malloc(aux1);
+          char aux1[MAX], *aux2, aux3[MAX];
+          TrocearCadena(arg, aux1, aux3); //Gardamos en aux3 o argumento _tam_
+          int tam = atoi(aux3); //Convertimos a integer o string
+          aux2 = malloc(tam);
           //Comprobamos se a memoria se reservou correctamente
-          if (NULL <> aux2){
-            //reservouse correctamente
-            printf("allocated %d at %c\n",aux1, aux2)
+          if (NULL != aux2){
+            addListM(m,aux2, tam, "malloc", 0, "");
+            printf("allocated %s at %p\n",aux3, aux2);
           }
           else {
             //non se reservou correctamente
             printf("Erro ao reservar memoria\n");
           }
-
-
       }
+
       if (strncmp(arg,"-shared",7)==0) {
         //facer o que lle corresponde a asignar -shared _cl_
       }
@@ -686,7 +753,13 @@ void asignar (char arg[], int palabras){
   //Se se introducen 3 argumentos
   if (palabras == 4){
     if (strncmp(arg,"-mmap",5)==0) {
-      //facer o que lle corresponde a asignar -mmap fich _perm_
+      //Se se introduciu asignar -mmap fich _perm_
+      char * troceado[MAX/2];
+      TrocearCadenaEnArray(arg,troceado,palabras);
+       Cmd_AsignarMmap(troceado);
+
+
+
     }
     if (strncmp(arg,"-crearshared",12)==0) {
       //facer o que lle corresponde a asignar -crearshared _cl_ _tam_
@@ -696,7 +769,20 @@ void asignar (char arg[], int palabras){
 /*
 --------------------------------------------------------------------------------
 */
-void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h){
+void volcar(char arg[], int palabras){
+  if(palabras==1) printf("Falta addr\n");
+  if(palabras==2){
+    for(int i =0 ; i<25 ; i++){
+      printf("%p ", *(arg + 4));
+    }
+  }
+
+
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,tListM * m){
   //Tendo en conta o comando recivido e o número de palabras chámase a función necesaria
   // ou salta o erro por comando non válido ou por exceso de argumentos
 		if (strncmp(com,"autores\0",8)==0){
@@ -747,7 +833,7 @@ void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h)
                               }
                               else {
                               if(strncmp(com,"asignar\0",8)==0){
-                                asignar(arg,palabras);
+                                asignar(arg,palabras,m);
                               }
                               else{
                                 printf("%s no encontrado\n",com );
@@ -774,8 +860,11 @@ int main() {
   char  comando[MAX];
   char argumento[MAX];
 	tList historial;
+  tListM memoria;
 	historial.inicio=NULL;
 	historial.final=NULL;
+  memoria.inicio=NULL;
+  memoria.final=NULL;
 
   //Mentras non se indica que se acabou leerase por teclado e traballarase coa cadena recivida
 	while (acabado != 1){
@@ -790,7 +879,7 @@ int main() {
 		numPalabras=TrocearCadena(teclado , comando, argumento);
 
     //Escóllese a función a facer dependendo do comando
-		escollerFuncion(comando,argumento,numPalabras,&acabado,&historial);
+		escollerFuncion(comando,argumento,numPalabras,&acabado,&historial,&memoria);
 
     //Límpianse as diversas cadeas que se utilizaron
 		limpiarBuffer(teclado);

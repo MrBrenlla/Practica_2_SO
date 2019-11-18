@@ -20,7 +20,8 @@ tNodoM crearNodo(void * addr, int size, char type[15], int cl_fd, char nomF[MAX]
 /*
 --------------------------------------------------------------------------------
 */
-void addListM(tListM * l, tNodoM nodo){
+void addListM(tListM * l, void * addr, int size, char type[15], int cl_fd, char nomF[MAX]){
+  tNodoM nodo = crearNodo(addr,size,type,cl_fd,nomF);
   if (l->inicio==NULL){
     l->inicio=malloc(sizeof(tNodoM));
     if(l->inicio!=NULL){
@@ -117,17 +118,3 @@ int equalAddr(tNodoM a,void * b){
 /*
 --------------------------------------------------------------------------------
 */
-int main(){
-  tListM l;
-  l.inicio=NULL;
-  l.final=NULL;
-  addListM(&l,crearNodo(malloc(1),6,"map",0,"pepe"));
-  addListM(&l,crearNodo(malloc(1),6,"mmap",0,"perpe"));
-  addListM(&l,crearNodo(malloc(1),6,"mmap",0,"pepe"));
-
-  verListaM(l,"all");
-
-  borrarNodo(&l,"pepe",equalMmap);
-  verListaM(l,"all");
-  vaciar(&l);
-};

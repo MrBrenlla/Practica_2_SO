@@ -22,7 +22,7 @@ typedef struct listM {
 
 
 tNodoM crearNodo(void * addr, int size, char type[], int cl_fd , char nomF[MAX]);
-void addListM(tListM * l, tNodoM nodo);
+void addListM(tListM * l, void * addr, int size, char type[15], int cl_fd, char nomF[MAX]);
 int borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b));
 void vaciar(tListM * l);
 void verListaM(tListM l, char type[]);
