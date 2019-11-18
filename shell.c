@@ -65,7 +65,7 @@ void borrar (char arg[], int palabras);
 void * MmapFichero (char * fichero, int protection);
 void Cmd_AsignarMmap (char *arg[]);
 ssize_t LeerFichero (char *fich, void *p, ssize_t n);
-void TrocearCadenaEnArray(char arg[],char *out[], int numPalabras);
+int TrocearCadenaEnArray(char * cadena,char * trozos[]);
 void asignar (char arg[], int palabras,tListM * m);
 void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,tListM * m);
 
@@ -698,16 +698,13 @@ void Cmd_AsignarMmap (char *arg[]){
 */
 //out é o array no que se van a gardar os argumentos, e inicializase na función
 // na que se realiza a chamada
-void TrocearCadenaEnArray(char arg[],char *out[], int numPalabras){
-  char aux1[MAX], aux2[MAX], aux3[MAX];
-  int i=0;
-  strcpy(aux3,arg);
-  while(numPalabras>0){
-    numPalabras=TrocearCadena(aux3, aux1 , aux2);
-    strcpy(out[i],aux1);
+int TrocearCadenaEnArray(char * cadena, char * trozos[])
+  { int i=1;
+    if ((trozos[0]=strtok(cadena," \n\t"))==NULL)
+    return 0;
+    while ((trozos[i]=strtok(NULL," \n\t"))!=NULL)
     i++;
-    strcpy(aux3,aux2);
-  }
+    return i;
 }
 /*
 --------------------------------------------------------------------------------
@@ -744,7 +741,12 @@ void asignar (char arg[], int palabras, tListM * m){
             printf("Erro ao reservar memoria\n");
           }
       }
-
+      if(strncmp(arg,"-mmap",5)==0){
+        char * troceado[MAX];
+        TrocearCadenaEnArray(arg,troceado);
+        printf("tt\n" );
+         Cmd_AsignarMmap(&troceado[1]);
+       }
       if (strncmp(arg,"-shared",7)==0) {
         //facer o que lle corresponde a asignar -shared _cl_
       }
@@ -754,9 +756,9 @@ void asignar (char arg[], int palabras, tListM * m){
   if (palabras == 4){
     if (strncmp(arg,"-mmap",5)==0) {
       //Se se introduciu asignar -mmap fich _perm_
-      char * troceado[MAX/2];
-      TrocearCadenaEnArray(arg,troceado,palabras);
-       Cmd_AsignarMmap(troceado);
+      char * troceado[MAX];
+      TrocearCadenaEnArray(arg,troceado);
+       Cmd_AsignarMmap(&troceado[1]);
 
 
 
@@ -770,11 +772,19 @@ void asignar (char arg[], int palabras, tListM * m){
 --------------------------------------------------------------------------------
 */
 void volcar(char arg[], int palabras){
+  void * c;
   if(palabras==1) printf("Falta addr\n");
   if(palabras==2){
     for(int i =0 ; i<25 ; i++){
-      printf("%d ", *(arg + 4));
+      c=(void *)atoi(arg);
+      printf("%x ", *((int *)c));
     }
+    printf("\n" );
+    for(int i =0 ; i<25 ; i++){
+      c=(void *)atoi(arg);
+      printf("%c ", *((char *)c));
+    }
+    printf("\n" );
   }
 
 
@@ -832,12 +842,17 @@ void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,
                                 info(arg,palabras);
                               }
                               else {
-                              if(strncmp(com,"asignar\0",8)==0){
-                                asignar(arg,palabras,m);
-                              }
-                              else{
-                                printf("%s no encontrado\n",com );
-                              }
+                                if(strncmp(com,"asignar\0",8)==0){
+                                  asignar(arg,palabras,m);
+                                }
+                                else{
+                                  if(strncmp(com,"volcar\0\0",6)==0){
+                                  volcar(arg,palabras);
+                                  }
+                                  else{
+                                    printf("%s no encontrado\n",com );
+                                  }
+                          }
                         }
                       }
                     }
