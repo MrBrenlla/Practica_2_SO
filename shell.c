@@ -772,17 +772,17 @@ void asignar (char arg[], int palabras, tListM * m){
 --------------------------------------------------------------------------------
 */
 void volcar(char arg[], int palabras){
-  void * c;
+  //void * c;
   if(palabras==1) printf("Falta addr\n");
   if(palabras==2){
     for(int i =0 ; i<25 ; i++){
-      c=(void *)atoi(arg);
-      printf("%x ", *((int *)c));
+      //c=(void *)atoi(arg);
+      //printf("%x ", *((int *)c));
     }
     printf("\n" );
     for(int i =0 ; i<25 ; i++){
-      c=(void *)atoi(arg);
-      printf("%c ", *((char *)c));
+      //c=(void *)atoi(arg);
+      //printf("%c ", *((char *)c));
     }
     printf("\n" );
   }
