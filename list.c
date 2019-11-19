@@ -42,9 +42,10 @@ void addListM(tListM * l, void * addr, int size, char type[15], int cl_fd, char 
 /*
 --------------------------------------------------------------------------------
 */
-int borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b)){
+void * borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b)){
   tNodoM * aux = l->inicio;
   tNodoM * aux2;
+  void * tmp;
   if (aux!=NULL){
     if(comp(*aux,dato)){
       l->inicio = l->inicio->sig;
@@ -57,13 +58,15 @@ int borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b)){
       if(aux2!=NULL && (comp(*aux2,dato))){
         aux->sig = aux2->sig;
         free(aux2->addr);
+        if (aux2==l->final) l->final=aux;
+        tmp=aux2;
         free(aux2);
-        return 0;
+        return tmp;
       }
       else aux=aux2;
     }
   }
-  return 1;
+  return NULL;
 };
 /*
 --------------------------------------------------------------------------------
