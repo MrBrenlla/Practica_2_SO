@@ -1,6 +1,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 #include "list.h"
 
 /*
@@ -38,7 +41,7 @@ void addListM(tListM * l, void * addr, int size, char type[15], int cl_fd, char 
     }
     else perror("Error");
   }
-};
+}
 /*
 --------------------------------------------------------------------------------
 */
@@ -49,17 +52,26 @@ void * borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b)){
   if (aux!=NULL){
     if(comp(*aux,dato)){
       l->inicio = l->inicio->sig;
-      free(aux->addr);
+      tmp=aux->addr;
+      if (aux==l->final) l->final=NULL;
+
+      if(strcmp(aux->type,"malloc")==0) free(aux->addr);
+      if(strcmp(aux->type,"mmap")==0) munmap(aux->addr,aux->size);
+      if(strcmp(aux->type,"shared")==0) shmdt(aux->addr);
+
       free(aux);
-      return 0;
+      return tmp;
     }
     else while(aux!=NULL){
       aux2=aux->sig;
       if(aux2!=NULL && (comp(*aux2,dato))){
         aux->sig = aux2->sig;
-        free(aux2->addr);
+        tmp=aux2->addr;
         if (aux2==l->final) l->final=aux;
-        tmp=aux2;
+
+        if(strcmp(aux2->type,"malloc")==0) free(aux2->addr);
+        if(strcmp(aux2->type,"mmap")==0) munmap(aux2->addr,aux2->size);
+        if(strcmp(aux2->type,"shared")==0) shmdt(aux->addr);
         free(aux2);
         return tmp;
       }
@@ -67,7 +79,7 @@ void * borrarNodo(tListM * l, void * dato, int (*comp)(tNodoM a, void * b)){
     }
   }
   return NULL;
-};
+}
 /*
 --------------------------------------------------------------------------------
 */
@@ -76,12 +88,15 @@ void vaciar(tListM * l){
   aux = l->inicio;
   if (aux != NULL){
     l->inicio=l->inicio->sig;
-    free(aux->addr);
+
+    if(strcmp(aux->type,"malloc")==0) free(aux->addr);
+    if(strcmp(aux->type,"mmap")==0) munmap(aux->addr,aux->size);
+    if(strcmp(aux->type,"shared")==0) shmdt(aux->addr);
     free(aux);
     vaciar(l);
   }
   else l->final=NULL;
-};
+}
 /*
 --------------------------------------------------------------------------------
 */
@@ -96,28 +111,26 @@ while (aux!=NULL){
     char output[MAX];
     strftime(output,MAX,"%c",&time);
     printf("%s\n",output);
-    aux=aux->sig;
   }
+  aux=aux->sig;
 }
 
-
-
-};
+}
 /*
 --------------------------------------------------------------------------------
 */
 int equalMalloc(tNodoM a,void * b){
   return (a.size==*((int*)b) && strcmp(a.type,"malloc")==0);
-};
+}
 int equalMmap(tNodoM a,void * b){
   return (strcmp(a.nomF,((char *)b))==0 && strcmp(a.type,"mmap")==0);
-};
+}
 int equalShared(tNodoM a,void * b){
   return (a.cl_fd==*((int *)b) && strcmp(a.type,"shared")==0);
-};
+}
 int equalAddr(tNodoM a,void * b){
-  return strcmp(a.addr,((char* )b));
-};
+  return (a.addr==b);
+}
 /*
 --------------------------------------------------------------------------------
 */

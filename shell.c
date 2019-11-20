@@ -1,7 +1,7 @@
 
-// Practica 1 se SO
+// Practica 2 se SO
 //Parte 1, shell.c
-// Data: 23 de Outubro do 2019
+// Data: 21 de Novembro do 2019
 
 // Grupo 1.3
 // Brais García Brenlla ; b.brenlla
@@ -24,8 +24,11 @@
 #include <fcntl.h>
 #include <errno.h>
 #include "list.h"
+#include <stddef.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
 
-
+int aa, bb , cc;
 
 typedef  struct nodo {
  	char dato[MAX];
@@ -62,8 +65,8 @@ void mostrar(int l,int v,struct dirent * sig, char dir[]);
 void auxListar(char actualdir[], char aux1[], int rec, int l, int r, int v);
 void listar(char arg[]);
 void borrar (char arg[], int palabras);
-void * MmapFichero (char * fichero, int protection);
-void Cmd_AsignarMmap (char *arg[]);
+void * MmapFichero (char * fichero, int protection,tListM * m);
+void Cmd_AsignarMmap (char *arg[],tListM * m);
 ssize_t LeerFichero (char *fich, void *p, ssize_t n);
 int TrocearCadenaEnArray(char * cadena,char * trozos[]);
 void asignar (char arg[], int palabras,tListM * m);
@@ -641,7 +644,7 @@ void borrar (char arg[], int palabras){
 /*
 --------------------------------------------------------------------------------
 */
-void * MmapFichero (char * fichero, int protection){
+void * MmapFichero (char * fichero, int protection, tListM * m){
     int df, map=MAP_PRIVATE,modo=O_RDONLY;
 
     struct stat s;
@@ -650,15 +653,14 @@ void * MmapFichero (char * fichero, int protection){
         modo=O_RDWR;
     if (stat(fichero,&s)==-1 || (df=open(fichero, modo))==-1)
         return NULL;
-    if ((p=mmap (NULL,s.st_size, protection,map,df,0))==MAP_FAILED)
-        return NULL;
-    /*Guardar Direccion de Mmap (p, s.st_size,fichero,df......);*/
+    if ((p=mmap (NULL,s.st_size, protection,map,df,0))==MAP_FAILED) return NULL;
+    else addListM(m,p, s.st_size, "mmap", df, fichero);
     return p;
 }
 /*
 --------------------------------------------------------------------------------
 */
-void Cmd_AsignarMmap (char *arg[]){
+void Cmd_AsignarMmap (char *arg[],tListM * m){
     char *perm;
     void *p;
     int protection=0;
@@ -667,7 +669,7 @@ void Cmd_AsignarMmap (char *arg[]){
         if (strchr(perm,'w')!=NULL) protection|=PROT_WRITE;
         if (strchr(perm,'x')!=NULL) protection|=PROT_EXEC;
     }
-    if ((p=MmapFichero(arg[0],protection))==NULL)
+    if ((p=MmapFichero(arg[0],protection,m))==NULL)
         perror ("Imposible mapear fichero");
     else
       printf ("fichero %s mapeado en %p\n", arg[0], p);
@@ -692,19 +694,61 @@ void Cmd_AsignarMmap (char *arg[]){
     close (df);
     return (nleidos);
 }
-
 /*
 --------------------------------------------------------------------------------
 */
-//out é o array no que se van a gardar os argumentos, e inicializase na función
-// na que se realiza a chamada
-int TrocearCadenaEnArray(char * cadena, char * trozos[])
-  { int i=1;
+int TrocearCadenaEnArray(char * cadena, char * trozos[]){
+  int i=1;
     if ((trozos[0]=strtok(cadena," \n\t"))==NULL)
     return 0;
     while ((trozos[i]=strtok(NULL," \n\t"))!=NULL)
     i++;
     return i;
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void * ObtenerMemoriaShmget (key_t clave, size_t tam,tListM * m){
+  void * p;
+  int aux,id,flags=0777;
+  struct shmid_ds s;
+  if (tam) /*si tam no es 0 la crea en modo exclusivo */
+    flags=flags | IPC_CREAT | IPC_EXCL;
+          /*si tam es 0 intenta acceder a una ya creada*/
+  if (clave==IPC_PRIVATE)
+    /*no nos vale*/
+    {errno=EINVAL; return NULL;}
+  if ((id=shmget(clave, tam, flags))==-1)
+    return (NULL);
+  if ((p=shmat(id,NULL,0))==(void*) -1){
+      aux=errno;
+      /*si se ha creado y no se puede mapear*/
+        if (tam) /*se borra */
+            shmctl(id,IPC_RMID,NULL);
+      errno=aux;
+      return (NULL);
+  }
+  shmctl (id,IPC_STAT,&s);
+  addListM(m,p, tam, "shared", clave, "");
+  return (p);
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void Cmd_AsignarCreateShared (char *arg[],tListM * m){
+  key_t k;
+  size_t tam=0;
+  void *p;
+  if (arg[0]==NULL || arg[1]==NULL){
+    verListaM(*m,"shared"); return;
+  }
+  k=(key_t) atoi(arg[0]);
+  if (arg[1]!=NULL)
+    tam=(size_t) atoll(arg[1]);
+  if ((p=ObtenerMemoriaShmget(k,tam,m))==NULL)
+    perror ("Imposible obtener memoria shmget");
+  else
+    printf ("Memoria de shmget de clave %d asignada en %p\n",k,p);
 }
 /*
 --------------------------------------------------------------------------------
@@ -716,11 +760,10 @@ void asignar (char arg[], int palabras, tListM * m){
   }
   //Se só se introduce 1 argumento lístase en funcion da palabra introducida
   if (palabras == 2){
-      //Se só se introduce 1 argumento lístase en funcion da palabra introducida
       if (strncmp(arg,"-malloc",7)==0) verListaM(*m,"malloc");
-      if (strncmp(arg,"-mmap",5)==0) verListaM(*m,"mmap");
-      if (strncmp(arg,"-crearshared",12)==0) verListaM(*m,"shared");
-      if (strncmp(arg,"-shared",7)==0) verListaM(*m,"shared");
+      else if (strncmp(arg,"-mmap",5)==0) verListaM(*m,"mmap");
+      else if (strncmp(arg,"-crearshared",12)==0) verListaM(*m,"shared");
+      else if (strncmp(arg,"-shared",7)==0) verListaM(*m,"shared");
       else printf("uso: allocate [-malloc|-shared|-createshared|-mmap]");
   }
   //Se se introducen 2 argumentos
@@ -742,13 +785,29 @@ void asignar (char arg[], int palabras, tListM * m){
           }
       }
       if(strncmp(arg,"-mmap",5)==0){
+        //Se se introduciu asignar -mmap fich
         char * troceado[MAX];
         TrocearCadenaEnArray(arg,troceado);
-        printf("tt\n" );
-         Cmd_AsignarMmap(&troceado[1]);
+         Cmd_AsignarMmap(&troceado[1],m);
        }
       if (strncmp(arg,"-shared",7)==0) {
-        //facer o que lle corresponde a asignar -shared _cl_
+        //Se se introduciu asignar -shared _cl_
+        char aux1[MAX],aux2[MAX];
+        void *p;
+        TrocearCadena(arg,aux1,aux2);
+        key_t clave = atoi(aux2);
+
+        if ((p = ObtenerMemoriaShmget(clave,0,m)) == NULL)
+          printf("Non se puido asignar: No such file or directory\n");
+        else
+          printf("Memoria de shmget de clave %d asignada en %p\n",clave,p);
+      }
+
+      if (strncmp(arg,"-crearshared",12)==0) {
+        //Se se introduciu asignar -crearshared _cl_
+        char * troceado[MAX];
+        TrocearCadenaEnArray(arg,troceado);
+        Cmd_AsignarCreateShared(&troceado[1],m);
       }
   }
 
@@ -758,36 +817,221 @@ void asignar (char arg[], int palabras, tListM * m){
       //Se se introduciu asignar -mmap fich _perm_
       char * troceado[MAX];
       TrocearCadenaEnArray(arg,troceado);
-       Cmd_AsignarMmap(&troceado[1]);
-
-
-
+       Cmd_AsignarMmap(&troceado[1],m);
     }
     if (strncmp(arg,"-crearshared",12)==0) {
-      //facer o que lle corresponde a asignar -crearshared _cl_ _tam_
+      //Se se introduciu asignar -crearshared _cl_ _tam_
+      char * troceado[MAX];
+      TrocearCadenaEnArray(arg,troceado);
+      Cmd_AsignarCreateShared(&troceado[1],m);
     }
   }
 }
 /*
 --------------------------------------------------------------------------------
 */
-void volcar(char arg[], int palabras){
-  //void * c;
-  if(palabras==1) printf("Falta addr\n");
-  if(palabras==2){
-    for(int i =0 ; i<25 ; i++){
-      //c=(void *)atoi(arg);
-      //printf("%x ", *((int *)c));
-    }
-    printf("\n" );
-    for(int i =0 ; i<25 ; i++){
-      //c=(void *)atoi(arg);
-      //printf("%c ", *((char *)c));
-    }
-    printf("\n" );
+void desasignar (char arg[], int palabras, tListM * m){
+  char aux1[MAX],aux2[MAX];
+  void * tmp;
+  if (palabras == 1){
+    verListaM(*m,"all");
   }
 
+  //Se só se introduce 1 argumento lístase en funcion da palabra introducida
+  if (palabras == 2){
+      if (strncmp(arg,"-malloc",7)==0) verListaM(*m,"malloc");
+      else if (strncmp(arg,"-mmap",5)==0) verListaM(*m,"mmap");
 
+      else if (strncmp(arg,"-shared",7)==0) verListaM(*m,"shared");
+      else {
+        void * dir = (void *)strtol(arg, NULL, 16);
+        dir = borrarNodo(m,dir,equalAddr);
+        if(dir==NULL) printf("Dirección non valida\n");
+        else printf("block at address at %p deallocated\n",dir);
+      }
+  }
+  //Se se introducen 2 argumentos
+  if (palabras == 3){
+    TrocearCadena(arg,aux1,aux2);
+      if (strncmp(aux1,"-malloc",7)==0) {
+
+        //Se se introduciu asignar -malloc _tam_
+        int  num = atoi(aux2);
+        tmp = borrarNodo(m,(void *) &num, equalMalloc);
+        if(tmp==NULL)
+          printf("Desasignar non foi posíbel\n" );
+          else{
+            printf("Desasignados %s en %p\n",aux2,tmp);
+          }
+      }
+      if (strncmp(aux1,"-mmap",5)==0) {
+        //Se se introduciu desasignar -mmap fich
+        tmp=borrarNodo(m,(void *) aux2, equalMmap);
+        if(tmp==NULL)
+          printf("Desmapear non foi posíbel\n" );
+        else
+          printf("Desmapeados %s en %p\n",aux2,tmp);
+      }
+      if (strncmp(aux1,"-shared",7)==0) {
+        int  num = atoi(aux2);
+        //Se se introduciu desasignar -shared _cl_
+        tmp=borrarNodo(m,(void *) &num, equalShared);
+        if(tmp==NULL)
+          printf("Non foi posíbel separar a memoria compartida con clave %s\n", aux2);
+        else
+          printf("Separouse o bloque de memoria con clave %s en %p\n",aux2,tmp);
+      }
+  }
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void volcar(char arg[], int palabras){
+  char aux1[MAX],aux2[MAX];
+  unsigned char c;
+  int max = 25;
+  if(palabras==1) printf("Falta addr\n");
+  else if(palabras==2 || palabras == 3){
+    TrocearCadena(arg,aux1,aux2);
+    if (palabras==3) max = atoi(aux2);
+    char * dir = (void *)strtol(aux1, NULL, 16);
+    for(int j=0; j<max; j+=25){
+      for(int i =0 ; i<25 && i+j<max ; i++){
+        c = *(dir+i+j);
+        printf("%2x ", c);
+      }
+      printf("\n" );
+      for(int i =0 ; i<25 && i+j<max ; i++){
+        c = *(dir+i+j);
+        printf("%2c ", c);
+      }
+      printf("\n" );
+    }
+
+  }
+  else printf("Demasiados argumentos\n");
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void llenar(char arg[], int palabras){
+  char aux1[MAX],aux2[MAX],aux3[MAX];
+  char c=65;
+  int max = 25;
+  if(palabras==1) printf("Falta addr\n");
+  else if(palabras==2 || palabras==3 || palabras==4){
+    TrocearCadena(arg,aux1,aux2);
+    char * dir = (void *)strtol(aux1, NULL, 16);
+    if(palabras==3)max=atoi(aux2);
+    else if(palabras==4){
+      TrocearCadena(aux2,aux1,aux3);
+      max=atoi(aux1);
+      c=(char)strtol(aux3, NULL, 0);
+    }
+    for(int i=0; i<max;i++) *(dir+i)=c;
+  }
+  else printf("Demasiados argumentos\n");
+
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void Cmd_borrakey (char *args[]){
+  key_t clave;
+  int id;
+  char *key=args[0];
+  if (key==NULL || (clave=(key_t) strtoul(key,NULL,10))==IPC_PRIVATE){
+    printf ("rmkey clave_valida\n");
+    return;
+  }
+  if ((id=shmget(clave,0,0666))==-1){
+    perror ("shmget: imposible obtener memoria compartida");return;
+  }
+  if (shmctl(id,IPC_RMID,NULL)==-1)
+    perror ("shmctl: imposible eliminar memoria compartida\n");
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void recursiva (int n)
+{
+char automatico[2048];
+static char estatico[2048];
+printf ("parametro n:%d en %p\n",n,&n);
+printf ("array estatico en:%p \n",estatico);
+printf ("array automatico en %p\n",automatico);
+n--;
+if (n>=0)
+recursiva(n);
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void borrarkey(char arg[], int palabras){
+  char *troc[MAX];
+  if (palabras == 2){
+    TrocearCadenaEnArray(arg,troc);
+    Cmd_borrakey(troc);
+  } else printf("Débense introducir só duas palabras\n");
+}
+ /*
+--------------------------------------------------------------------------------
+*/
+void rfich(char arg[],int palabras){
+  if (palabras<3) printf("Faltan argumentos\n");
+  else if(palabras>4) printf("Demasiados argumentos\n");
+  else{
+    int max = -1;
+    char * troc[MAX];
+    char c;
+    TrocearCadenaEnArray(arg,troc);
+    FILE * f = fopen(troc[0],"r");
+    if (f==NULL) {perror("Error" );return;}
+    char * dir = (void *)strtol(troc[1], NULL, 16);
+    if(troc[2]!=NULL) max = atoi(troc[2]);
+    for(int i=0 ; ((c=fgetc(f))!=EOF && max==-1) || i<max; i++) dir[i]=c;
+    if(fclose(f)==EOF) perror("Error");
+  }
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void wfich(char arg[],int palabras){
+  if (palabras<3) printf("Faltan argumentos\n");
+  else if(palabras>5) printf("Demasiados argumentos\n");
+  else{
+    int max = -1;
+    char * troc[MAX];
+    TrocearCadenaEnArray(arg,troc);
+    int h;
+    if(strncmp("-o\n",troc[0],3)==0) h=1; else h=0;
+    FILE * f = NULL;
+    if(h==0) f = fopen(troc[0],"a");
+    if (f==NULL) f = fopen(troc[h],"w");
+    if (f==NULL) {perror("Error" );return;}
+    char * dir = (void *)strtol(troc[1+h], NULL, 16);
+    max = atoi(troc[2+h]);
+    for(int i=0 ; i<max; i++) if(fputc(dir[i],f)==EOF) perror("Error");
+    if(fclose(f)==EOF) perror("Error");
+  }
+}
+/*
+--------------------------------------------------------------------------------
+*/
+void mem(char arg[], int palabras, tListM m){
+int a, b, c;
+  if (palabras ==1){
+    printf("Variables locales %p, %p, %p\n",&a,&b,&c);
+    printf("Variables globales %p, %p, %p\n",&aa,&bb,&cc);
+    printf("Funciones programa %p, %p, %p\n",mem,wfich,rfich);
+  }
+  else if (palabras==2){
+    if (strncmp(arg,"-malloc",7)==0) verListaM(m,"malloc");
+    else if (strncmp(arg,"-mmap",5)==0) verListaM(m,"mmap");
+    else if (strncmp(arg,"-shared",7)==0) verListaM(m,"shared");
+    else if (strncmp(arg,"-all",4)==0) verListaM(m,"all");
+    else printf("uso: mem [-malloc|-shared|-mmap]");
+  }
 }
 /*
 --------------------------------------------------------------------------------
@@ -833,25 +1077,61 @@ void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,
                     if(strncmp(com,"borrar\0",7)==0){
                         borrar(arg,palabras);
                       }
+                    else{
+                      if(strncmp(com,"listar\0",7)==0){
+                          listar(arg);
+                      }
                       else{
-                        if(strncmp(com,"listar\0",7)==0){
-                            listar(arg);
+                        if(strncmp(com,"info\0",5)==0){
+                            info(arg,palabras);
+                          }
+                        else {
+                          if(strncmp(com,"asignar\0",8)==0){
+                            asignar(arg,palabras,m);
                           }
                           else{
-                            if(strncmp(com,"info\0",5)==0){
-                                info(arg,palabras);
+                            if(strncmp(com,"desasignar\0",11)==0){
+                              desasignar(arg,palabras,m);
+                            }
+                            else{
+                              if(strncmp(com,"volcar\0",6)==0){
+                                volcar(arg,palabras);
                               }
-                              else {
-                                if(strncmp(com,"asignar\0",8)==0){
-                                  asignar(arg,palabras,m);
+                              else{
+                                if(strncmp(com,"llenar\0",7)==0){
+                                  llenar(arg,palabras);
                                 }
                                 else{
-                                  if(strncmp(com,"volcar\0\0",6)==0){
-                                  volcar(arg,palabras);
+                                  if(strncmp(com,"rfich\0",6)==0){
+                                    rfich(arg,palabras);
                                   }
                                   else{
-                                    printf("%s no encontrado\n",com );
+                                    if(strncmp(com,"wfich\0",6)==0){
+                                      wfich(arg,palabras);
+                                    }
+                                    else{
+                                      if(strncmp(com,"mem\0",4)==0){
+                                        mem(arg,palabras,*m);
+                                      }
+                                      else{
+                                        if(strncmp(com,"borrarkey\0",10)==0){
+                                          borrarkey(arg,palabras);
+                                        }
+                                        else{
+                                          if(strncmp(com,"recursiva\0",10)==0){
+                                            if(palabras==2)recursiva(atoi(arg));
+                                            else printf("Recursiva solo acepta un único número\n");
+                                          }
+                                          else{
+                                            printf("%s no encontrado\n",com );
+                                          }
+                                        }
+                                      }
+                                    }
                                   }
+                                }
+                              }
+                            }
                           }
                         }
                       }
@@ -905,4 +1185,5 @@ int main() {
 	}
   //vacíase a lista antes de pechar o programa
   borrarhist(&historial);
+  vaciar(&memoria);
 }
