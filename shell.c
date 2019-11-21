@@ -28,6 +28,8 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 
+#define LEERCOMPLETO ((ssize_t)-1)
+
 int aa, bb , cc;
 
 typedef  struct nodo {
@@ -674,26 +676,6 @@ void Cmd_AsignarMmap (char *arg[],tListM * m){
     else
       printf ("fichero %s mapeado en %p\n", arg[0], p);
     }
-    #define LEERCOMPLETO ((ssize_t)-1)
-    ssize_t LeerFichero (char *fich, void *p, ssize_t n)
-    {
-    ssize_t nleidos,tam=n;
-    int df, aux;
-    struct stat s;
-    /*n=-1 indica que se lea tod*/
-    if (stat (fich,&s)==-1 || (df=open(fich,O_RDONLY))==-1)
-    return ((ssize_t)-1);
-    if (n==LEERCOMPLETO)
-    tam=(ssize_t) s.st_size;
-    if ((nleidos=read(df,p, tam))==-1){
-    aux=errno;
-    close(df);
-    errno=aux;
-    return ((ssize_t)-1);
-    }
-    close (df);
-    return (nleidos);
-}
 /*
 --------------------------------------------------------------------------------
 */
@@ -887,21 +869,24 @@ void desasignar (char arg[], int palabras, tListM * m){
 --------------------------------------------------------------------------------
 */
 void volcar(char arg[], int palabras){
+  //mostrase por pantalla os valores da dirección indicada
   char aux1[MAX],aux2[MAX];
   unsigned char c;
   int max = 25;
   if(palabras==1) printf("Falta addr\n");
   else if(palabras==2 || palabras == 3){
     TrocearCadena(arg,aux1,aux2);
+    //Se se puxo cantas posicións se mostran, e se non queda como 25
     if (palabras==3) max = atoi(aux2);
+    //Transformase o string ao punteiro da direccion
     char * dir = (void *)strtol(aux1, NULL, 16);
-    for(int j=0; j<max; j+=25){
-      for(int i =0 ; i<25 && i+j<max ; i++){
+    for(int j=0; j<max; j+=25){ //Liñas de 25
+      for(int i =0 ; i<25 && i+j<max ; i++){//Codigo hexadecimal
         c = *(dir+i+j);
-        printf("%2x ", c);
+        printf("%2.2x ", c);
       }
       printf("\n" );
-      for(int i =0 ; i<25 && i+j<max ; i++){
+      for(int i =0 ; i<25 && i+j<max ; i++){//Caracter
         c = *(dir+i+j);
         printf("%2c ", c);
       }
@@ -915,18 +900,20 @@ void volcar(char arg[], int palabras){
 --------------------------------------------------------------------------------
 */
 void llenar(char arg[], int palabras){
+  //Enchese a dirección recivida tantas posición indicadas co char que se recive (en codigo ou char)
   char aux1[MAX],aux2[MAX],aux3[MAX];
   char c=65;
   int max = 25;
   if(palabras==1) printf("Falta addr\n");
   else if(palabras==2 || palabras==3 || palabras==4){
     TrocearCadena(arg,aux1,aux2);
-    char * dir = (void *)strtol(aux1, NULL, 16);
-    if(palabras==3)max=atoi(aux2);
+    char * dir = (void *)strtol(aux1, NULL, 16);//Consiguese a direccion
+    if(palabras==3)max=atoi(aux2);//Se hai collese o numero de posicións, se non é 25
     else if(palabras==4){
-      TrocearCadena(aux2,aux1,aux3);
-      max=atoi(aux1);
-      c=(char)strtol(aux3, NULL, 0);
+      TrocearCadena(aux2,aux1,aux3);//Se hai numero de posición e caracter a escribir
+      max=atoi(aux1);//collese o numero de posicións, se non é 25
+      if(aux3[0]=='\'' && aux3[2]=='\'' && aux3[3]=='\0') c=aux3[1];//Caracter entre comillas
+      else c=(char)strtol(aux3, NULL, 0);//Codigo ascii (hexadecimal [0x] ou decimal)
     }
     for(int i=0; i<max;i++) *(dir+i)=c;
   }
@@ -969,10 +956,8 @@ recursiva(n);
 */
 void borrarkey(char arg[], int palabras){
   char *troc[MAX];
-  if (palabras == 2){
-    TrocearCadenaEnArray(arg,troc);
-    Cmd_borrakey(troc);
-  } else printf("Débense introducir só duas palabras\n");
+  TrocearCadenaEnArray(arg,troc);
+  Cmd_borrakey(troc);
 }
  /*
 --------------------------------------------------------------------------------
@@ -981,17 +966,34 @@ void rfich(char arg[],int palabras){
   if (palabras<3) printf("Faltan argumentos\n");
   else if(palabras>4) printf("Demasiados argumentos\n");
   else{
-    int max = -1;
+    ssize_t max = LEERCOMPLETO;
     char * troc[MAX];
-    char c;
     TrocearCadenaEnArray(arg,troc);
-    FILE * f = fopen(troc[0],"r");
-    if (f==NULL) {perror("Error" );return;}
-    char * dir = (void *)strtol(troc[1], NULL, 16);
+    void * dir = (void *)strtol(troc[1], NULL, 16);
     if(troc[2]!=NULL) max = atoi(troc[2]);
-    for(int i=0 ; ((c=fgetc(f))!=EOF && max==-1) || i<max; i++) dir[i]=c;
-    if(fclose(f)==EOF) perror("Error");
+    LeerFichero(troc[0],dir,max);
   }
+}
+/*
+--------------------------------------------------------------------------------
+*/
+ssize_t LeerFichero (char *fich, void *p, ssize_t n) /*n=-1 indica que se lea todo*/
+{
+ssize_t nleidos,tam=n;
+int df, aux;
+struct stat s;
+if (stat (fich,&s)==-1 || (df=open(fich,O_RDONLY))==-1)
+return ((ssize_t)-1);
+if (n==LEERCOMPLETO)
+tam=(ssize_t) s.st_size;
+if ((nleidos=read(df,p, tam))==-1){
+aux=errno;
+close(df);
+errno=aux;
+return ((ssize_t)-1);
+}
+close (df);
+return (nleidos);
 }
 /*
 --------------------------------------------------------------------------------
@@ -1000,19 +1002,20 @@ void wfich(char arg[],int palabras){
   if (palabras<3) printf("Faltan argumentos\n");
   else if(palabras>5) printf("Demasiados argumentos\n");
   else{
-    int max = -1;
+    unsigned int max;
     char * troc[MAX];
     TrocearCadenaEnArray(arg,troc);
     int h;
     if(strncmp("-o\n",troc[0],3)==0) h=1; else h=0;
-    FILE * f = NULL;
-    if(h==0) f = fopen(troc[0],"a");
-    if (f==NULL) f = fopen(troc[h],"w");
-    if (f==NULL) {perror("Error" );return;}
+    if(h==0 && palabras==5){printf("Hai un argumento demais ou no orde incorrecto\n");return;}
+    int f = -1;
+    if(h==0) f = open(troc[0],O_WRONLY| O_APPEND | O_CREAT, S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH);
+    if (f==-1) f = open(troc[h],O_WRONLY | O_APPEND | O_CREAT | O_EXCL, S_IRUSR|S_IWUSR|S_IXUSR|S_IRGRP|S_IXGRP|S_IROTH|S_IXOTH);
+    if (f==-1) {perror("Error" );return;}
     char * dir = (void *)strtol(troc[1+h], NULL, 16);
     max = atoi(troc[2+h]);
-    for(int i=0 ; i<max; i++) if(fputc(dir[i],f)==EOF) perror("Error");
-    if(fclose(f)==EOF) perror("Error");
+    if(write(f,dir,max)==-1){close(f);perror("Error");}
+    else close(f);
   }
 }
 /*
@@ -1115,7 +1118,8 @@ void escollerFuncion(char com[],char arg[],int palabras,int * acabado,tList * h,
                                       }
                                       else{
                                         if(strncmp(com,"borrarkey\0",10)==0){
-                                          borrarkey(arg,palabras);
+                                          if(palabras==2) borrarkey(arg,palabras);
+                                          else printf("Débense introducir só duas palabras\n");
                                         }
                                         else{
                                           if(strncmp(com,"recursiva\0",10)==0){
